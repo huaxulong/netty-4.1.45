@@ -139,6 +139,16 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
         }
     }
 
+    /**
+     *
+     * @param executor : ThreadPerTaskExecutor
+     * @param args , args[0]:KQueueSelectorProvider, args[1]:io.netty.channel.DefaultSelectStrategyFactory , args[2]=io.netty.util.concurrent.RejectedExecutionHandlers$1
+     * SelectorProvider.provider()是JDK中NIO相关的API，会创建出一个SelectorProvider，它的作用就是在后面创建多路复用器Selector和服务端channel
+     * DefaultSelectStrategyFactory.INSTANCE 是一个默认选择策略工厂，new DefaultSelectStrategyFactory()
+     * RejectedExecutionHandlers.reject()返回的是一个拒绝策略，当向线程池中添加任务时，如果线程池任务队列已满，这个时候任务就会被拒绝，然后执行拒绝策略
+     * @return
+     * @throws Exception
+     */
     @Override
     protected EventLoop newChild(Executor executor, Object... args) throws Exception {
         EventLoopTaskQueueFactory queueFactory = args.length == 4 ? (EventLoopTaskQueueFactory) args[3] : null;

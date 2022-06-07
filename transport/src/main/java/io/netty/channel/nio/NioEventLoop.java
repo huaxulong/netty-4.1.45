@@ -170,6 +170,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private SelectorTuple openSelector() {
         final Selector unwrappedSelector;
         try {
+            // 获取Nio 层面的 selector 。
             unwrappedSelector = provider.openSelector();
         } catch (IOException e) {
             throw new ChannelException("failed to open a new selector", e);
@@ -214,7 +215,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     Field publicSelectedKeysField = selectorImplClass.getDeclaredField("publicSelectedKeys");
 
                     if (PlatformDependent.javaVersion() >= 9 && PlatformDependent.hasUnsafe()) {
-                        // Let us try to use sun.misc.Unsafe to replace the SelectionKeySet.
+                        // Let us try to use sun.misc.Unsafe to replace the SelectionKeySet.  让我们尝试使用Unsafe 替换SelectionKeySet
                         // This allows us to also do this in Java9+ without any extra flags.
                         long selectedKeysFieldOffset = PlatformDependent.objectFieldOffset(selectedKeysField);
                         long publicSelectedKeysFieldOffset =
@@ -238,7 +239,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     if (cause != null) {
                         return cause;
                     }
-
+                    // 利用反射将原生 selector 中两个属性替换成 netty 自己的包装类。 其实是在这里偷偷摸摸的搞事哈哈哈。
                     selectedKeysField.set(unwrappedSelector, selectedKeySet);
                     publicSelectedKeysField.set(unwrappedSelector, selectedKeySet);
                     return null;
@@ -258,6 +259,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
         selectedKeys = selectedKeySet;
         logger.trace("instrumented a special java.util.Set into: {}", unwrappedSelector);
+        // 此时原生的 selector 的底层数据结构也被替换成了数组
         return new SelectorTuple(unwrappedSelector,
                                  new SelectedSelectionKeySetSelector(unwrappedSelector, selectedKeySet));
     }
@@ -433,11 +435,16 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     @Override
     protected void run() {
+        // epoll bug 的一个特征计数变量。
         int selectCnt = 0;
         for (;;) {
             try {
+                // >= 0, 表示 selector 的返回值， 注册多路复用器上就绪的个数
                 int strategy;
                 try {
+                    // 根据当前 NioEventLoop 是否有本地任务， 来决定怎么处理
+                    // 如果有任务， 那么就调用多路复用器的 selectNow（） 方法， 返回多路复用器上 就绪的 ch 个数
+                    // 没有任务， 返回 -1
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
                     case SelectStrategy.CONTINUE:
@@ -447,6 +454,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         // fall-through to SELECT since the busy-wait is not supported with NIO
 
                     case SelectStrategy.SELECT:
+                        // 如果没有任务，执行的是 select(curDeadlineNanos)
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
                         if (curDeadlineNanos == -1L) {
                             curDeadlineNanos = NONE; // nothing on the calendar
@@ -454,6 +462,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
                             if (!hasTasks()) {
+                                //  如果没有任务，执行的是 select(curDeadlineNanos), 这里先写上结论
+                                // select.selectNow() 方法会检查当前是否有就绪的IO事件，如果有则返回就绪的IO事件的个数，
+                                // 如果没有，则返回0。 selectNow() 是立即返回的，不会阻塞当前线程，而 select(timeout) 会阻塞当前线程。
                                 strategy = select(curDeadlineNanos);
                             }
                         } finally {
@@ -481,15 +492,19 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 if (ioRatio == 100) {
                     try {
                         if (strategy > 0) {
+                            //注意这里有优化其实是将底层的数据结构从HashSet 改成了数组。
+                            // 如果IO比率 100%了， 并且有事件就去处理事件
                             processSelectedKeys();
                         }
                     } finally {
                         // Ensure we always run tasks.
+                        // 否则就处理所有任务
                         ranTasks = runAllTasks();
                     }
                 } else if (strategy > 0) {
                     final long ioStartTime = System.nanoTime();
                     try {
+                        // 如果还没到比例，但是有事件，还是处理事件，然后再处理任务，但是有超时时间
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
@@ -497,6 +512,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 } else {
+                    // 如果没到比例，又没任务，那就处理任务，没超时时间
                     ranTasks = runAllTasks(0); // This will run the minimum number of tasks
                 }
 
@@ -665,6 +681,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * processSelectedKey 中处理了三个事件： OP_READ 可读事件，OP_WRITE 可写事件，OP_CONNECT 连接建立事件。
+     * @param k
+     * @param ch
+     */
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
         if (!k.isValid()) {
@@ -689,6 +710,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         try {
+            // 这里就是一些处理NIO 层面的一些IO事件了。
             int readyOps = k.readyOps();
             // We first need to call finishConnect() before try to trigger a read(...) or write(...) as otherwise
             // the NIO JDK channel implementation may throw a NotYetConnectedException.

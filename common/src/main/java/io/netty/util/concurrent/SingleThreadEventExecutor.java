@@ -458,9 +458,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
      */
     protected boolean runAllTasks(long timeoutNanos) {
+        // 先获取 任务，并且把任务放入 taskQueue 中。
         fetchFromScheduledTaskQueue();
         Runnable task = pollTask();
         if (task == null) {
+            // 处理任务后，去执行tailTasks 的任务
             afterRunningAllTasks();
             return false;
         }
@@ -469,6 +471,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         long runTasks = 0;
         long lastExecutionTime;
         for (;;) {
+            // 执行任务。 里面就是调用task.run() 方法
             safeExecute(task);
 
             runTasks ++;
@@ -940,7 +943,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
+        // 出于非启动状态，才会去尝试启动线程
         if (state == ST_NOT_STARTED) {
+            // 将线程状态修改成 启动状态
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
@@ -986,6 +991,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 启动NioEventLoop 线程
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

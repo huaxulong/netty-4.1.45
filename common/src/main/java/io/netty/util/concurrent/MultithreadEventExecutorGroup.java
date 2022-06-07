@@ -73,6 +73,10 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         }
 
         if (executor == null) {
+            /**
+             * 创建线程执行器：ThreadPerTaskExecutor
+             * newDefaultThreadFactory() 会创建一个线程工厂，该线程工厂的作用就是用来创建线程，同时给线程设置名称：nioEventLoop-1-XX
+             */
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
         // 初始化
@@ -108,6 +112,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        // 通过线程执行器选择工厂 来创建一个 线程执行器
         chooser = chooserFactory.newChooser(children);
 
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
