@@ -70,8 +70,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected AbstractChannel(Channel parent) {
         this.parent = parent;
+        // 每个channel 实例 创建一个 channelId 对象；
         id = newId();
+        // 当类型是 NioServerSocketChannel , 它的Unsafe 实例是 NioMessageUnsafe
+        // 当类型是 NioSocketChannel 的时候，它的 Unsafe 实例是 NioByteUnsafe
         unsafe = newUnsafe();
+        // 创建出来当前 channel 内部的 Pipeline 管道
+        // 创建出来的这个 Pipeline 内部有两个默认的处理器， 分别是 headContext 和 TailContext
+        // head <--> tail
         pipeline = newChannelPipeline();
     }
 
@@ -452,7 +458,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             ObjectUtil.checkNotNull(eventLoop, "eventLoop");
+            // 防止 channel 重复注册..
             if (isRegistered()) {
+                // 设置 promise 结果为失败..
+                // 2. 回调 监听者，执行失败的逻辑
                 promise.setFailure(new IllegalStateException("registered to an event loop already"));
                 return;
             }
@@ -462,6 +471,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // AbstractChannel.this 获取到 channel 作用域， 这个 channel 就是nusafe 的外层对象。 NioServerSocketChannel 对象
+            // 绑定个关系.. 后续 channel 上的事件 或者 任务 都会依赖当前 EventLoop 线程去处理..
             AbstractChannel.this.eventLoop = eventLoop;
 
             if (eventLoop.inEventLoop()) {
@@ -485,6 +496,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        // 这个方法一定是 当前channel 关联的 EventLoop 线程执行
+        // 参数： promise: 表示注册结果的，外部可以向它 注册监听者， 来完成注册后的逻辑。
         private void register0(ChannelPromise promise) {
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
@@ -500,9 +513,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // 确保我们 调用 handlerAdded（…）之前我们能够真正的通知 promise。那需要用户可能已经通过ChannelFutureListener中的管道触发事件
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+                // 会向当前 EventLoop 线程队列 提交任务2 。
                 pipeline.invokeHandlerAddedIfNeeded();
 
+                // 这一步会去回调， 注册相关的 promise 上注册那些Listener， 比如： "主线程" 在 regFuture 上注册的监听者。
+                // 回调 doBind0 方法时， 会向 EventLoop 线程队列提交 任务3
                 safeSetSuccess(promise);
+
+                // 向当前 Channel 的 pipeline 发起注册完成事件， 关注的 handler 可以做一些事情。
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.

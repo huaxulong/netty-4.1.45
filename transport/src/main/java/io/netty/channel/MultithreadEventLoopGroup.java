@@ -83,6 +83,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
 
     @Override
     public ChannelFuture register(Channel channel) {
+        // 这个 channel 区分是服务端 还是 客户端；
         return next().register(channel);
     }
 

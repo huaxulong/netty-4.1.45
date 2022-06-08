@@ -281,12 +281,15 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
         long nanoTime = AbstractScheduledEventExecutor.nanoTime();
         for (;;) {
+            // 获取优先级队列 队头节点， 就是最着急的调度任务。可能返回null， 只有任务确实该执行 才返回 该任务。
             Runnable scheduledTask = pollScheduledTask(nanoTime);
             if (scheduledTask == null) {
                 return true;
             }
+            // 将任务加到 普通任务队列。
             if (!taskQueue.offer(scheduledTask)) {
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
+                // 执行到这里， 说明任务没有转移成功， 在重新把调度任务放回 scheduledTaskQueue.
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
             }
@@ -373,11 +376,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ranAtLeastOne = false;
 
         do {
+            // 将调度任务队列内的 需要被调度的任务 转移到 普通任务队列  taskQueue 内
+            // fetchedAll ： 表示需要被调度任务 有没有转移 完
             fetchedAll = fetchFromScheduledTaskQueue();
             if (runAllTasksFrom(taskQueue)) {
                 ranAtLeastOne = true;
             }
         } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
+        // 执行到这， 需要调度的任务 和 普通任务 全部都执行完了。
 
         if (ranAtLeastOne) {
             lastExecutionTime = ScheduledFutureTask.nanoTime();
@@ -456,9 +462,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.  This method stops running
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
+     * timeoutNacos : 表示执行任务最多可用的时长。
+     * timeoutNacos 如果传0： 表示执行任务最多只能执行 64个任务。就要跳出，要么就是taskQueue里面的任务已经全部执行完了。
      */
     protected boolean runAllTasks(long timeoutNanos) {
-        // 先获取 任务，并且把任务放入 taskQueue 中。
+        // 先获取 调度任务，并且把调度任务放入 taskQueue 普通任务队列中。
         fetchFromScheduledTaskQueue();
         Runnable task = pollTask();
         if (task == null) {
@@ -467,8 +475,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             return false;
         }
 
+        // deadline : 表示执行任务的截止时间
         final long deadline = timeoutNanos > 0 ? ScheduledFutureTask.nanoTime() + timeoutNanos : 0;
+        // 已经执行的任务 个数
         long runTasks = 0;
+        // 最后一个任务的执行时间戳
         long lastExecutionTime;
         for (;;) {
             // 执行任务。 里面就是调用task.run() 方法
@@ -478,6 +489,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
             // Check timeout every 64 tasks because nanoTime() is relatively expensive.
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
+            // 0x3F => 63 => ob 111111
+            // 64 =>   1000000 & 111111 => 0
+            // 128 => 10000000 & 111111 => 0
+            // 192 =>110000000 & 111111 => 0 , 说明必须是64的整数倍
+            // 没执行64 个任务， 这个条件才成立一次。
             if ((runTasks & 0x3F) == 0) {
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
                 if (lastExecutionTime >= deadline) {
@@ -488,6 +504,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             task = pollTask();
             if (task == null) {
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
+                // 没有任务了， 这里也会跳出
                 break;
             }
         }

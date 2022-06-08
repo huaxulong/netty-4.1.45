@@ -148,12 +148,15 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
      * if no task is scheduled.
      */
     protected final long nextScheduledTaskDeadlineNanos() {
+        // 从优先级队列获取任务
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
+        // 假设周期任务队列内 有任务，返回队头任务的 执行截止时间
         return scheduledTask != null ? scheduledTask.deadlineNanos() : -1;
     }
 
     final ScheduledFutureTask<?> peekScheduledTask() {
         Queue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
+        // peek 方法并不会做出队操作
         return scheduledTaskQueue != null ? scheduledTaskQueue.peek() : null;
     }
 

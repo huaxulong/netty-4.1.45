@@ -454,14 +454,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         // fall-through to SELECT since the busy-wait is not supported with NIO
 
                     case SelectStrategy.SELECT:
-                        // 如果没有任务，执行的是 select(curDeadlineNanos)
+                        // 获取可调度任务的执行截止时间
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
+                        // 如果成立，说明咱们 EventLoop 内没有需要周期性执行的任务。
                         if (curDeadlineNanos == -1L) {
                             curDeadlineNanos = NONE; // nothing on the calendar
                         }
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
+                            // 条件成立，说明没有本地普通任务需要执行
                             if (!hasTasks()) {
+                                // 它有两种可能，一种是MaxValue ，说明没有周期性任务的情况
+                                // 第二种是 表示周期性任务， 需要执行的截止时间
                                 //  如果没有任务，执行的是 select(curDeadlineNanos), 这里先写上结论
                                 // select.selectNow() 方法会检查当前是否有就绪的IO事件，如果有则返回就绪的IO事件的个数，
                                 // 如果没有，则返回0。 selectNow() 是立即返回的，不会阻塞当前线程，而 select(timeout) 会阻塞当前线程。
@@ -487,10 +491,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 selectCnt++;
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
+                // 线程处理IO事件的 时间占比， 默认是50%
                 final int ioRatio = this.ioRatio;
+                // 表示本轮线程有没有处理过 本地任务。
                 boolean ranTasks;
+                // 条件成立： 说明 IO 优先， IO处理完之后，再处理本地任务
                 if (ioRatio == 100) {
                     try {
+                        // 当前NioEventLoop 有就绪的 ch 事件
                         if (strategy > 0) {
                             //注意这里有优化其实是将底层的数据结构从HashSet 改成了数组。
                             // 如果IO比率 100%了， 并且有事件就去处理事件
@@ -504,15 +512,17 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 } else if (strategy > 0) {
                     final long ioStartTime = System.nanoTime();
                     try {
-                        // 如果还没到比例，但是有事件，还是处理事件，然后再处理任务，但是有超时时间
+                        // 如果还没到比例，但是有事件，还是处理事件，然后再处理任务，但是有超时时间。 处理IO  事件
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
+                        // IO 事件处理总耗时
                         final long ioTime = System.nanoTime() - ioStartTime;
+                        // ioTime * (100 - ioRatio) / ioRatio ， 根据IO处理时间， 计算出一个执行本地任务队列任务最大的 时间
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 } else {
-                    // 如果没到比例，又没任务，那就处理任务，没超时时间
+                    // 执行最少数量的本地任务，最多64个。
                     ranTasks = runAllTasks(0); // This will run the minimum number of tasks
                 }
 
@@ -521,8 +531,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         logger.debug("Selector.select() returned prematurely {} times in a row for Selector {}.",
                                 selectCnt - 1, selector);
                     }
+                    // 正常NioEventLoop 线程从 selector 多路复用器上 唤醒后 工作是因为有 IO 事件
+                    // 正常会把 selectCnt 设置为0
                     selectCnt = 0;
                 } else if (unexpectedSelectorWakeup(selectCnt)) { // Unexpected wakeup (unusual case)
+                    // 出现bug 状态
                     selectCnt = 0;
                 }
             } catch (CancelledKeyException e) {
@@ -569,6 +582,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // Rebuild the selector to work around the problem.
             logger.warn("Selector.select() returned prematurely {} times in a row; rebuilding Selector {}.",
                     selectCnt, selector);
+            // bug 修复的原理是 重建 Selector .
             rebuildSelector();
             return true;
         }
@@ -588,6 +602,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKeys() {
+        // selectedKeys， 表示当前NioEventLoop 就绪事件的集合
         if (selectedKeys != null) {
             processSelectedKeysOptimized();
         } else {
@@ -660,9 +675,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
 
+            // 附件。 这里会拿到 "注册" 阶段，咱们向 selector 提供的 Channel 对象。
+            // channel 可能是 NioServerSocketChannel, 也可以是 NioSocketChannel
             final Object a = k.attachment();
 
+            // 大部分情况都会执行这个分支
             if (a instanceof AbstractNioChannel) {
+                // 处理IO事件的真正逻辑
                 processSelectedKey(k, (AbstractNioChannel) a);
             } else {
                 @SuppressWarnings("unchecked")
@@ -687,6 +706,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      * @param ch
      */
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
+        // 1. NioServerSocketChannel -> NioMessageUnsafe
+        // 2. NioSocketChannel -> NioByteUnsafe
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
         if (!k.isValid()) {
             final EventLoop eventLoop;
@@ -732,7 +753,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
+            // (readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 , 正常逻辑， channel 有可读或者 accept 事件。
+            // readyOps == 0 ? 它是什么情况呢？ 这里会通过 unsafe.read() 再次将 当前channel 的事件列表设置为 监听读
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
+                // 1.server -> 创建客户端socketChannel ...
+                // 2. socketChannel -> NioByteUnsafe.read()  会读取缓冲区的数据， 并且将数据 响应到 pipeline 中...
+                //  客户端连接，或者是客户端发送数据的处理入口。
                 unsafe.read();
             }
         } catch (CancelledKeyException ignored) {
@@ -820,12 +846,15 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         return selector.selectNow();
     }
 
+    // deadlineNanos 这是一个准确的时间点
     private int select(long deadlineNanos) throws IOException {
         if (deadlineNanos == NONE) {
+            // 阻塞当前调用线程， 知道有就绪的ch， 再返回，并且返回就绪事件的个数。
             return selector.select();
         }
         // Timeout will only be 0 if deadline is within 5 microsecs
         long timeoutMillis = deadlineToDelayNanos(deadlineNanos + 995000L) / 1000000L;
+        // 如果连一毫秒都没有的话，直接走selectNow()
         return timeoutMillis <= 0 ? selector.selectNow() : selector.select(timeoutMillis);
     }
 

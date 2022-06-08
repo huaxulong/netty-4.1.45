@@ -142,9 +142,15 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                     pipeline.addLast(handler);
                 }
 
+                // 这里添加了 ServerBootstrapAcceptor 处理器到 pipeline 中。
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
+                        // 参数1： ch: 服务端 channel
+                        // 参数2： currentChildGroup： worker 线程组
+                        // 参数3： currentChildHandler ， 模版代码中配置的 childHandler, 其实就是一个 channelInitiallizer, 这个CI 用于初始化客户端 pipeline
+                        // 参数4： currentChildOptions
+                        // 参数5： currentChildAttrs
                         pipeline.addLast(new ServerBootstrapAcceptor(
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }
@@ -166,6 +172,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
+    // 这个处理器是 什么时候添加到 bossGroup 的 pipeline 中来的呢？initAndRegister 里面添加的。
+    // headHandler -> ServerBootstrapAcceptor -> tailHandler
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
         private final EventLoopGroup childGroup;
@@ -174,6 +182,11 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         private final Entry<AttributeKey<?>, Object>[] childAttrs;
         private final Runnable enableAutoReadTask;
 
+        // 参数1： ch: 服务端 channel
+        // 参数2： currentChildGroup： worker 线程组
+        // 参数3： currentChildHandler ， 模版代码中配置的 childHandler, 其实就是一个 channelInitiallizer, 这个CI 用于初始化客户端 pipeline
+        // 参数4： currentChildOptions
+        // 参数5： currentChildAttrs
         ServerBootstrapAcceptor(
                 final Channel channel, EventLoopGroup childGroup, ChannelHandler childHandler,
                 Entry<ChannelOption<?>, Object>[] childOptions, Entry<AttributeKey<?>, Object>[] childAttrs) {
@@ -197,15 +210,22 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
         @Override
         @SuppressWarnings("unchecked")
+        /**
+         * ctx: 包装当前 channel 的ctx
+         * 参数2： msg: NioSocketChannel 实例
+         */
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             final Channel child = (Channel) msg;
 
+            // child.pipeline() => 获取到客户端channel的 pipeline 对象
+            // addLast(childHandler) => 向客户端 Pipeline 内添加一个 ChannelInitializer 模版代码配置的。
             child.pipeline().addLast(childHandler);
 
             setChannelOptions(child, childOptions, logger);
             setAttributes(child, childAttrs);
 
             try {
+                // childGroup ， 这个是 worker 线程组。 这里是客户端注册逻辑入口
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
