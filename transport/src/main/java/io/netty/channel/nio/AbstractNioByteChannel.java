@@ -130,22 +130,32 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
         @Override
         public final void read() {
+            // 获取 客户端channel #config 对象
             final ChannelConfig config = config();
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
                 return;
             }
+            // 获取客户端 Channel # pipeline
             final ChannelPipeline pipeline = pipeline();
+            // 获取一个缓冲区分配器。 PooledByteBufAllocator，在非 安卓端获取的是这个PooledByteBufAllocator。获取的缓冲区分配器就是池化内存管理的缓冲区分配器。
             final ByteBufAllocator allocator = config.getAllocator();
+            // 控制读循环， 以及预测下次创建的 ByteBuf 容量大小
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+            // 重制
             allocHandle.reset(config);
 
+            // ByteBuf 增强， 缓冲区里面包装着内存，提供给咱 去读取 Socket 读缓冲区 内的业务数据。
             ByteBuf byteBuf = null;
             boolean close = false;
             try {
                 do {
                     byteBuf = allocHandle.allocate(allocator);
+                    // doReadBytes 返回 真实从 Socketchannel 读取的数据量
+                    // 更新 缓冲区预测分配器的 最后一次 读取数据量
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
+                    // 1. channel 底层 socket 缓冲区 已经完全读取完毕， 会返回0
+                    // 2. channel 对端 关闭了， 会返回 -1
                     if (allocHandle.lastBytesRead() <= 0) {
                         // nothing was read. release the buffer.
                         byteBuf.release();
@@ -158,8 +168,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                         break;
                     }
 
+                    // 更新缓存区预测分配器 读取的消息数量
                     allocHandle.incMessagesRead(1);
                     readPending = false;
+                    // 向客户端 pipeline 发起 channelRead 事件，该pipeline 实现了 channelRead 的 handler 就可以进行业务处理了
                     pipeline.fireChannelRead(byteBuf);
                     byteBuf = null;
                 } while (allocHandle.continueReading());
@@ -271,7 +283,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             if (buf.isDirect()) {
                 return msg;
             }
-
+            // 这里是将 buf 转换成 直接内存的逻辑
             return newDirectBuffer(buf);
         }
 
@@ -342,6 +354,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             return;
         }
         final int interestOps = key.interestOps();
+        // 清理掉 OP_WRITE
         if ((interestOps & SelectionKey.OP_WRITE) != 0) {
             key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
         }

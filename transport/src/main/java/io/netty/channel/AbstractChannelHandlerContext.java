@@ -59,6 +59,7 @@ import static io.netty.channel.ChannelHandlerMask.mask;
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannelHandlerContext.class);
+    // 为什么需要前驱指针和后驱指针，因为对于 inboundHandler , 是从head 开始往后一次去处理， 而对于outBoundHandler ，是从tail 开始依次开始往前去处理。维护一个双向链表关系
     volatile AbstractChannelHandlerContext next;
     volatile AbstractChannelHandlerContext prev;
 
@@ -83,9 +84,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
      */
     private static final int INIT = 0;
 
+    // 当前ctx 归属的 pipeline
     private final DefaultChannelPipeline pipeline;
+    // 默认情况下不指定， 向pipeline 添加ctx 时， pipeline 会给ctx 自动生成 name
     private final String name;
     private final boolean ordered;
+    // 判断是否有实现， 这个就是苍蝇蚊子也是肉， 优化都优化到这个地步了
     private final int executionMask;
 
     // Will be set to null if no child executor should be used, otherwise it will be set to the
@@ -99,11 +103,16 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     private volatile int handlerState = INIT;
 
+    //参数1： pipeline 外层容器， 盛装 CTX（handler） 的管道容器
+    //参数2： executor 事件执行器， 一般情况下，这里是null ， 除非你指定
+    // 参数3：
+    // 参数4： handler 业务真正的处理器。
     AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor executor,
                                   String name, Class<? extends ChannelHandler> handlerClass) {
         this.name = ObjectUtil.checkNotNull(name, "name");
         this.pipeline = pipeline;
         this.executor = executor;
+        // mask 方法用于计算一个掩码， 这个掩码的作用是 方便ctx 前后传递时 查找合适的 下一个 ctx
         this.executionMask = mask(handlerClass);
         // Its ordered if its driven by the EventLoop or the given Executor is an instanceof OrderedEventExecutor.
         ordered = executor == null || executor instanceof OrderedEventExecutor;
@@ -124,6 +133,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return channel().config().getAllocator();
     }
 
+    // 一般情况下返回 channel 注册的 事件轮训器
     @Override
     public EventExecutor executor() {
         if (executor == null) {
@@ -908,6 +918,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         AbstractChannelHandlerContext ctx = this;
         do {
             ctx = ctx.next;
+            // while 说明没有实现， 就继续去检查下一个。
         } while ((ctx.executionMask & mask) == 0);
         return ctx;
     }

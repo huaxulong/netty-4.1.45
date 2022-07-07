@@ -38,17 +38,22 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
     static final int DEFAULT_INITIAL = 1024;
     static final int DEFAULT_MAXIMUM = 65536;
 
+    // 索引增量
     private static final int INDEX_INCREMENT = 4;
+    // 索引减量 1
     private static final int INDEX_DECREMENT = 1;
 
     private static final int[] SIZE_TABLE;
 
     static {
+        // 初始化SIZE_TABLE 的逻辑。
         List<Integer> sizeTable = new ArrayList<Integer>();
+        // 向sizeTable 添加 16，32，48。。 496
         for (int i = 16; i < 512; i += 16) {
             sizeTable.add(i);
         }
 
+        // // 向sizeTable 添加 512，1024 直到溢出
         for (int i = 512; i > 0; i <<= 1) {
             sizeTable.add(i);
         }
@@ -96,11 +101,15 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
         private int nextReceiveBufferSize;
         private boolean decreaseNow;
 
+        //参数1： 64 在 SIZE_TABLE 的下标
+        //参数2： 65536 在 SIZE_TABLE 的下标
+        //参数3： 1024
         HandleImpl(int minIndex, int maxIndex, int initial) {
             this.minIndex = minIndex;
             this.maxIndex = maxIndex;
 
             index = getSizeTableIndex(initial);
+            // nextReceiveBufferSize 表示下一次分配出来的 byteBuf 容量大小，
             nextReceiveBufferSize = SIZE_TABLE[index];
         }
 
@@ -121,16 +130,23 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             return nextReceiveBufferSize;
         }
 
+        // 参数：真实读取的数据量， 本次从channel内读取的数据量
         private void record(int actualReadBytes) {
+            // 举个例子：
+            // 假设 SIZE_TABLE[idx] = 512 => SIZE_TABLE[idx-1] = 496
+            // 如果本次读取的数据量 <= 496, 说明channel的缓冲区 数据不是很多， 可能不需要那么大的 ByteBuf
             if (actualReadBytes <= SIZE_TABLE[max(0, index - INDEX_DECREMENT)]) {
                 if (decreaseNow) {
                     index = max(index - INDEX_DECREMENT, minIndex);
                     nextReceiveBufferSize = SIZE_TABLE[index];
                     decreaseNow = false;
                 } else {
+                    // 第一次设置成true
                     decreaseNow = true;
                 }
-            } else if (actualReadBytes >= nextReceiveBufferSize) {
+            }// 条件成立： 说明本次 ch 读请求， 已经将 ByteBuf 容器装满了， 说明channel 内还有很多很多的数据， 所以，这里让 index 右移。
+            // 下次构建出来更大的 ByteBuf 对象
+            else if (actualReadBytes >= nextReceiveBufferSize) {
                 index = min(index + INDEX_INCREMENT, maxIndex);
                 nextReceiveBufferSize = SIZE_TABLE[index];
                 decreaseNow = false;
@@ -163,6 +179,9 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
      * @param initial  the initial buffer size when no feed back was received
      * @param maximum  the inclusive upper bound of the expected buffer size
      */
+    // 参数1： 64
+    // 参数2：1024
+    // 参数3：65536
     public AdaptiveRecvByteBufAllocator(int minimum, int initial, int maximum) {
         checkPositive(minimum, "minimum");
         if (initial < minimum) {
@@ -172,6 +191,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             throw new IllegalArgumentException("maximum: " + maximum);
         }
 
+        // 二分查找算法，获取 minimum size 在数组内的下标（SIZE_TABLE[下标] <= minimum 值的）
         int minIndex = getSizeTableIndex(minimum);
         if (SIZE_TABLE[minIndex] < minimum) {
             this.minIndex = minIndex + 1;
@@ -179,8 +199,10 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             this.minIndex = minIndex;
         }
 
+        // 获取
         int maxIndex = getSizeTableIndex(maximum);
         if (SIZE_TABLE[maxIndex] > maximum) {
+            // 左移 1位
             this.maxIndex = maxIndex - 1;
         } else {
             this.maxIndex = maxIndex;
@@ -192,6 +214,9 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
     @SuppressWarnings("deprecation")
     @Override
     public Handle newHandle() {
+        //参数1： 64 在 SIZE_TABLE 的下标
+        //参数2： 65536 在 SIZE_TABLE 的下标
+        //参数3： 1024
         return new HandleImpl(minIndex, maxIndex, initial);
     }
 

@@ -51,7 +51,7 @@ public class WebSocketServerChannelHandler extends SimpleChannelInboundHandler<O
             new RuntimeException("["+this.getClass().getName()+"]不支持消息");
         }
         String request = ((TextWebSocketFrame)frame).text();
-        System.out.println("服务端接收到消息 ===》 "+ request);
+        System.out.println("服务端接收到消息 ===》 "+ request + "system : class: " + this.getClass().getName());
         Date date = new Date();
         SimpleDateFormat sdf = new SimpleDateFormat("YYYY-MM-dd hh:mm:ss");
 

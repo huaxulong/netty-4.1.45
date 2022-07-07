@@ -36,27 +36,47 @@ final class ChannelHandlerMask {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelHandlerMask.class);
 
     // Using to mask which methods must be called for a ChannelHandler.
+    // ob 0000 0000 0000 0000 0000 0000 0000 0001
     static final int MASK_EXCEPTION_CAUGHT = 1;
+    // ob 0000 0000 0000 0000 0000 0000 0000 0010
     static final int MASK_CHANNEL_REGISTERED = 1 << 1;
+    // ob 0000 0000 0000 0000 0000 0000 0000 0100
     static final int MASK_CHANNEL_UNREGISTERED = 1 << 2;
+    // ob 0000 0000 0000 0000 0000 0000 0000 1000
     static final int MASK_CHANNEL_ACTIVE = 1 << 3;
+    // ob 0000 0000 0000 0000 0000 0000 0001 0000
     static final int MASK_CHANNEL_INACTIVE = 1 << 4;
+    // ob 0000 0000 0000 0000 0000 0000 0010 0000
     static final int MASK_CHANNEL_READ = 1 << 5;
+    // ob 0000 0000 0000 0000 0000 0000 0100 0000
     static final int MASK_CHANNEL_READ_COMPLETE = 1 << 6;
+    // ob 0000 0000 0000 0000 0000 0000 1000 0000
     static final int MASK_USER_EVENT_TRIGGERED = 1 << 7;
+    // ob 0000 0000 0000 0000 0000 0001 0000 0000
     static final int MASK_CHANNEL_WRITABILITY_CHANGED = 1 << 8;
+    // ob 0000 0000 0000 0000 0000 0010 0000 0000
     static final int MASK_BIND = 1 << 9;
+    // ob 0000 0000 0000 0000 0000 0100 0000 0000
     static final int MASK_CONNECT = 1 << 10;
+    // ob 0000 0000 0000 0000 0000 1000 0000 0000
     static final int MASK_DISCONNECT = 1 << 11;
+    // ob 0000 0000 0000 0000 0001 0000 0000 0000
     static final int MASK_CLOSE = 1 << 12;
+    // ob 0000 0000 0000 0000 0010 0000 0000 0000
     static final int MASK_DEREGISTER = 1 << 13;
+    // ob 0000 0000 0000 0000 0100 0000 0000 0000
     static final int MASK_READ = 1 << 14;
+    // ob 0000 0000 0000 0000 1000 0000 0000 0000
     static final int MASK_WRITE = 1 << 15;
+    // ob 0000 0000 0000 0001 0000 0000 0000 0000
     static final int MASK_FLUSH = 1 << 16;
 
+    // 0b 0000 0000 0000 0000 0000 0001 1111 1111
     private static final int MASK_ALL_INBOUND = MASK_EXCEPTION_CAUGHT | MASK_CHANNEL_REGISTERED |
             MASK_CHANNEL_UNREGISTERED | MASK_CHANNEL_ACTIVE | MASK_CHANNEL_INACTIVE | MASK_CHANNEL_READ |
             MASK_CHANNEL_READ_COMPLETE | MASK_USER_EVENT_TRIGGERED | MASK_CHANNEL_WRITABILITY_CHANGED;
+
+    // ob 0000 0000 0000 0001 1111 1110 0000 0001
     private static final int MASK_ALL_OUTBOUND = MASK_EXCEPTION_CAUGHT | MASK_BIND | MASK_CONNECT | MASK_DISCONNECT |
             MASK_CLOSE | MASK_DEREGISTER | MASK_READ | MASK_WRITE | MASK_FLUSH;
 
@@ -71,12 +91,15 @@ final class ChannelHandlerMask {
     /**
      * Return the {@code executionMask}.
      */
+    // handler 业务真正的处理器。
     static int mask(Class<? extends ChannelHandler> clazz) {
         // Try to obtain the mask from the cache first. If this fails calculate it and put it in the cache for fast
         // lookup in the future.
         Map<Class<? extends ChannelHandler>, Integer> cache = MASKS.get();
         Integer mask = cache.get(clazz);
         if (mask == null) {
+            //二进制中对应的下标， 代表指定的方法。位的值是1，说明指定的方法在 handlerType 类型中 进行了实现，
+            // 相反，如果位的值是0， 说明指定的方法在 HandlerType 类型中未进行实现。
             mask = mask0(clazz);
             cache.put(clazz, mask);
         }
@@ -85,14 +108,30 @@ final class ChannelHandlerMask {
 
     /**
      * Calculate the {@code executionMask}.
+     * 返回值是一个int类型的数： 但是需要看它的二进制数
+     * 二进制中对应的下标， 代表指定的方法。位的值是1，说明指定的方法在 handlerType 类型中 进行了实现，
+     * 相反，如果位的值是0， 说明指定的方法在 HandlerType 类型中未进行实现。
      */
     private static int mask0(Class<? extends ChannelHandler> handlerType) {
         int mask = MASK_EXCEPTION_CAUGHT;
         try {
+            // 条件成立： 说明handlerType 类型属于 ChannelInboundHandler 子类
             if (ChannelInboundHandler.class.isAssignableFrom(handlerType)) {
+                // ob 0000 0000 0000 0000 0000 0000 0000 0001
+                // 0b 0000 0000 0000 0000 0000 0001 1111 1111
+                // 0b 0000 0000 0000 0000 0000 0001 1111 1111   ---> mask的值
                 mask |= MASK_ALL_INBOUND;
 
+                // 参数1： handler真实的class类型
+                // 参数2： 检查的方法名
+                // 参数3：ChannelHandlerContext.class
+                // isSkippable 方法返回 handlerType 这个class 有没有重写指定的方法， 重写之后，指定方法上的 @Skip 注解 就没了..
                 if (isSkippable(handlerType, "channelRegistered", ChannelHandlerContext.class)) {
+                    // 条件成立， 说明当前 handlerType 没有重写该方法...
+                    // 0b 0000 0000 0000 0000 0000 0001 1111 1111
+                    // ob 1111 1111 1111 1111 1111 1111 1111 1101
+                    // ob 0000 0000 0000 0000 0000 0001 1111 1101
+                    // 如果业务实现了这些方法， 那么它的对应的位上就是1了。
                     mask &= ~MASK_CHANNEL_REGISTERED;
                 }
                 if (isSkippable(handlerType, "channelUnregistered", ChannelHandlerContext.class)) {
@@ -161,6 +200,9 @@ final class ChannelHandlerMask {
         return mask;
     }
 
+    // 参数1： handler真实的class类型
+    // 参数2： 检查的方法名
+    // 参数3：ChannelHandlerContext.class
     @SuppressWarnings("rawtypes")
     private static boolean isSkippable(
             final Class<?> handlerType, final String methodName, final Class<?>... paramTypes) throws Exception {

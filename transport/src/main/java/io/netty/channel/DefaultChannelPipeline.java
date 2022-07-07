@@ -192,28 +192,45 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline addLast(String name, ChannelHandler handler) {
+        // 参数： EventExecutorGroup 事件执行器组 null
+        // 参数：name， 一般是null
+        // 参数：业务层面的处理器
         return addLast(null, name, handler);
     }
 
+    // 参数： EventExecutorGroup 事件执行器组 null
+    // 参数：name， 一般是null
+    // 参数：业务层面的处理器
     @Override
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
+        // 桥梁 ctx
         final AbstractChannelHandlerContext newCtx;
         synchronized (this) {
+            // 设置added 值为true, 表示 handler 已经插入到pipeline 了。
             checkMultiplicity(handler);
 
+            // 参数： EventExecutorGroup 事件执行器组 null
+            // 参数：name， 一般是null， handlerType + "#" + 编号N
+            // 参数：业务层面的处理器
             newCtx = newContext(group, filterName(name, handler), handler);
-
+            // head -> ... -> handler -> tail
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
             // In this case we add the context to the pipeline and add a task that will call
             // ChannelHandler.handlerAdded(...) once the channel is registered.
+            // registered: 条件成立，说明pipeline 归属的 channel 尚未注册， 还未分配 NioEventLoop
             if (!registered) {
+                // 添加一个任务，等channel 注册完成后， 再去执行。
+                // 为什么这么设计？
+                // 因为主要 ChannelHandler 有 handlerAdded 或者 handlerRemove。 这两方法传递了一个 ctx。
+                // 通过ctx 可以拿到 executor， 如果channel 没有注册，那么 channel 就没有 executor，那么 handler.handlerAdded 拿到 executor 可能是null， 就会抛出空指针异常。
                 newCtx.setAddPending();
                 callHandlerCallbackLater(newCtx, true);
                 return this;
             }
 
+            // 执行到这里，说明添加 handler 的时候， channel已经完成了注册。
             EventExecutor executor = newCtx.executor();
             if (!executor.inEventLoop()) {
                 callHandlerAddedInEventLoop(newCtx, executor);
@@ -361,7 +378,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
 
+    // 参数： 业务层面的处理器
     public final ChannelPipeline addLast(ChannelHandler handler) {
+        // 参数1：name， 一般是null
+        // 参数2：业务层面的处理器
         return addLast(null, handler);
     }
 
@@ -384,6 +404,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
 
+    // 生成一个name, 规则： handlerType + "#" + N
     private String generateName(ChannelHandler handler) {
         Map<Class<?>, String> cache = nameCaches.get();
         Class<?> handlerType = handler.getClass();
@@ -420,6 +441,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelHandler remove(String name) {
+        // getContextOrDie(name)， 根据handler 获取到 包装该 handler 的ctx
         return remove(getContextOrDie(name)).handler();
     }
 
@@ -453,6 +475,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         assert ctx != head && ctx != tail;
 
         synchronized (this) {
+            // handler 出 pipeline
             atomicRemoveFromHandlerList(ctx);
 
             // If the registered is false it means that the channel was not registered on an eventloop yet.
@@ -832,6 +855,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      * the handlers are removed after all events are handled.
      *
      * See: https://github.com/netty/netty/issues/3156
+     * channelUnregistered 的时候会触发 destory 逻辑。
      */
     private synchronized void destroy() {
         destroyUp(head.next, false);
@@ -1123,6 +1147,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         PendingHandlerCallback task = added ? new PendingHandlerAddedTask(ctx) : new PendingHandlerRemovedTask(ctx);
         PendingHandlerCallback pending = pendingHandlerCallbackHead;
+        // 把包含channelHandlerContext 的 PendingHandlerCallback 对象添加到队尾。
         if (pending == null) {
             pendingHandlerCallbackHead = task;
         } else {
@@ -1363,8 +1388,19 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             unsafe.beginRead();
         }
 
+        /**
+         * @param ctx               the {@link ChannelHandlerContext} for which the write operation is made
+         * @param msg               the message to write
+         * @param promise           the {@link ChannelPromise} to notify once the operation completes
+         */
+        //* 参数1： ctx 本身
+        //* 参数2： 一般都是ByteBuf 对象，当然还有其他情况... 比如 FileRegion
+        //* 参数3： promise : 这是一个结果对象，业务如果关注写操作 成功 或者 失败， 可以手动提交一个 跟msg 相关的 promise ， promise 内可以注册一些监听者， 用于处理结果。
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            // 这个 unsafe 一般都是 NioSocketChannelUnsafe 对象。
+            // 参数1： 一般都是ByteBuf 对象，当然还有其他情况... 比如 FileRegion
+            // 参数2： promise : 这是一个结果对象，业务如果关注写操作 成功 或者 失败， 可以手动提交一个 跟msg 相关的 promise ， promise 内可以注册一些监听者， 用于处理结果。
             unsafe.write(msg, promise);
         }
 

@@ -30,6 +30,7 @@ public interface RecvByteBufAllocator {
     /**
      * Creates a new handle.  The handle provides the actual operations and keeps the internal information which is
      * required for predicting an optimal buffer capacity.
+     *
      */
     Handle newHandle();
 
@@ -63,6 +64,7 @@ public interface RecvByteBufAllocator {
 
         /**
          * Increment the number of messages that have been read for the current read loop.
+         * 增加已读消息数量，读取次数
          * @param numMessages The amount to increment by.
          */
         void incMessagesRead(int numMessages);
@@ -74,6 +76,7 @@ public interface RecvByteBufAllocator {
          * occurs. If a negative value is seen it is expected to be return on the next call to
          * {@link #lastBytesRead()}. A negative value will signal a termination condition enforced externally
          * to this class and is not required to be enforced in {@link #continueReading()}.
+         *              最后一次从channel 中读取的消息数据量大小， byteSize
          */
         void lastBytesRead(int bytes);
 
@@ -86,6 +89,7 @@ public interface RecvByteBufAllocator {
         /**
          * Set how many bytes the read operation will (or did) attempt to read.
          * @param bytes How many bytes the read operation will (or did) attempt to read.
+         *              设置即将想要读取的数据量，或者已经读取的数据量
          */
         void attemptedBytesRead(int bytes);
 
@@ -98,11 +102,13 @@ public interface RecvByteBufAllocator {
         /**
          * Determine if the current read loop should continue.
          * @return {@code true} if the read loop should continue reading. {@code false} if the read loop is complete.
+         * 是否继续读循环
          */
         boolean continueReading();
 
         /**
          * The read has completed.
+         * 本地读循环 完毕的调用
          */
         void readComplete();
     }

@@ -225,7 +225,12 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             setAttributes(child, childAttrs);
 
             try {
-                // childGroup ， 这个是 worker 线程组。 这里是客户端注册逻辑入口
+                // childGroup ， 这个是 worker 线程组。 childGroup.register 这里是客户端注册逻辑入口
+                // 注册完成了哪些事情呢？
+                // 1.从Worker组内分配一个 NioEventLoop 给当前 NioSocketChannel 使用，（PS： NioEventLoop 是多个channel共享的）
+                // 2.完成底层的 socketChannel 注册到 底层多路复用器
+                // 3.向 NioSocketChannel Pipeline 发起 Active 事件，这个事件由 head 响应， head 最终通过调用 unsafe 修改当前的 SelectionKey 感兴趣的
+                // 事件包含 ：read。 代表 selector 帮当前 Channel 监听 读 事件。
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {

@@ -431,16 +431,21 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * but just returns the original {@link ByteBuf}..
      */
     protected final ByteBuf newDirectBuffer(ByteBuf buf) {
+        // 获取当前 ByteBuf 可读数据量
         final int readableBytes = buf.readableBytes();
         if (readableBytes == 0) {
             ReferenceCountUtil.safeRelease(buf);
             return Unpooled.EMPTY_BUFFER;
         }
-
+        // 执行到这里， 说明byteBuf 内还是有 有效数据的
+        // alloc() 是一个内存分配器， PooledByteBufAllocator。
         final ByteBufAllocator alloc = alloc();
         if (alloc.isDirectBufferPooled()) {
+            // 开辟 ByteBuf 可读数据量大小的，分配一块指定大小的 ByteBuf 对象
             ByteBuf directBuf = alloc.directBuffer(readableBytes);
+            // 将堆内 ByteBuf 数据， 拷贝到 堆外直接内存 ByteBuf 对象
             directBuf.writeBytes(buf, buf.readerIndex(), readableBytes);
+            // 释放堆内 ByteBuf 占用的内存
             ReferenceCountUtil.safeRelease(buf);
             return directBuf;
         }

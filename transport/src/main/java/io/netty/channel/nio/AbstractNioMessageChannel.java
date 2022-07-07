@@ -62,12 +62,12 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         @Override
         public void read() {
             assert eventLoop().inEventLoop();
-            // 服务端的config
+            // 服务端的config, NioServerSocketChannelConfig
             final ChannelConfig config = config();
             // 服务端的 pipeline
             final ChannelPipeline pipeline = pipeline();
 
-            // 控制读循环，以及预测下次创建的ByteBuf 的容量大小
+            // 控制读循环，以及预测下次创建的ByteBuf 的容量大小 AdaptiveRecvByteBufAllocator$HandleImpl
             final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
             // 重置
             allocHandle.reset(config);

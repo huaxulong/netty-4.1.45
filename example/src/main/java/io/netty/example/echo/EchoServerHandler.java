@@ -48,7 +48,9 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
         // 将消息记录到控制台
         System.out.println("Server receied " + in.toString(CharsetUtil.UTF_8));
         // 将接收到消息 写给发送者， 而不冲刷出站消息
-        ctx.write(strToByteBuf(in.toString(CharsetUtil.UTF_8) + " to "));
+        String str = "My name is dongxuHua";
+        ctx.write(str);
+//        ctx.write(strToByteBuf(in.toString(CharsetUtil.UTF_8) + " to "));
     }
 
     private static ByteBuf strToByteBuf(String con){

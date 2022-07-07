@@ -434,7 +434,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public RecvByteBufAllocator.Handle recvBufAllocHandle() {
-            if (recvHandle == null) {
+            if (recvHandle == null) {// serverSocketChannelConfig#AdaptiveRecvByteBufAllocator /  AdaptiveRecvByteBufAllocator$HandleImpl
                 recvHandle = config().getRecvByteBufAllocator().newHandle();
             }
             return recvHandle;
@@ -525,6 +525,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
                 if (isActive()) {
+                    // 客户端会进来这里， 服务端channel 不会走这里。
                     if (firstRegistration) {
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
@@ -871,10 +872,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        // 参数1： 一般都是ByteBuf 对象，当然还有其他情况... 不考虑这种情况
+        // 参数2： promise : 这是一个结果对象，业务如果关注写操作 成功 或者 失败， 可以手动提交一个 跟msg 相关的 promise ， promise 内可以注册一些监听者， 用于处理结果。
         @Override
         public final void write(Object msg, ChannelPromise promise) {
             assertEventLoop();
 
+            // 每个channel 都有一个属于它自己的 unsafe, 每个 unsafe 都有一个属于它自己的 outBoundBuffer
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             if (outboundBuffer == null) {
                 // If the outboundBuffer is null we know the channel was closed and so
@@ -887,9 +891,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 表示msg 数据大小
             int size;
             try {
+                // msg 一般都是 ByteBuf 对象， ByteBuf 对象根据内存归属分为 heap 和 direct 内存，即堆内存 和 直接内存（MMAP内存）
+                // ByteBuf 类型是 heap 类型的话， 这里会将它转换为 direact 内存。
                 msg = filterOutboundMessage(msg);
+                // 获取当前消息有效数据量大小
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
                     size = 0;
@@ -899,7 +907,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 ReferenceCountUtil.release(msg);
                 return;
             }
-
+            // 将byteBuf 数据加入到 出站缓冲区内
+            // 参数1： msg： ByteBuf 对象，并且这个ByteBuf 管理的内存 归属的是 direct
+            // 参数2： 数据量大小
+            // 参数3： promise : 这是一个结果对象，业务如果关注写操作 成功 或者 失败， 可以手动提交一个 跟msg 相关的 promise ， promise 内可以注册一些监听者， 用于处理结果。
             outboundBuffer.addMessage(msg, size, promise);
         }
 
@@ -911,8 +922,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             if (outboundBuffer == null) {
                 return;
             }
-
+            // 预准备刷新动作，
+            // 将 flushedEntry 指向第一个需要刷新的 entry 节点
+            // 计算出 flushedEntry
             outboundBuffer.addFlush();
+            // 真正刷新的动作
             flush0();
         }
 
@@ -927,7 +941,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             if (outboundBuffer == null || outboundBuffer.isEmpty()) {
                 return;
             }
-
+            // 表示当前channel 正在进行刷新
             inFlush0 = true;
 
             // Mark all pending write requests as failure if the channel is inactive.
@@ -946,6 +960,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
+                // 正常逻辑， 执行这里
+                // 参数： 当前channel 的出站缓冲区
                 doWrite(outboundBuffer);
             } catch (Throwable t) {
                 if (t instanceof IOException && config().isAutoClose()) {

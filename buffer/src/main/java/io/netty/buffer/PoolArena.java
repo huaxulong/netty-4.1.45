@@ -208,7 +208,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
         return (normCapacity & subpageOverflowMask) == 0;
     }
 
-    // normCapacity < 512
+    // normCapacity < 512 返回false
     static boolean isTiny(int normCapacity) {
         // 0xFFFFFE00 => 0b 1111111111111111111 11110 0000 0000    是一个掩码
         // 任何大于512的数字与该值进行 按位与运算， 都会得到一个 非0 值。
@@ -331,7 +331,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
             q075.allocate(buf, reqCapacity, normCapacity)) {
             return;
         }
-        // 执行到这里，说明在 PCL 没能申请内存成功，需要创建一个新的chunk ，在新chunk内申请内存。
+        // 执行到这里，说明在 PCL PoolChunkList 没能申请内存成功，需要创建一个新的chunk ，在新chunk内申请内存。
 
 
         // Add a new chunk.
@@ -503,7 +503,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
 
         // 条件成立：说明reqCapacity 是一个大于 512 的值，规格排除掉  tiny 这个情况。
         if (!isTiny(reqCapacity)) { // >= 512
-            // small、normal
+            // small、normal 这两种情况会走到这里
 
             // Doubled
             // 假设 reqCapacity 值为 555

@@ -154,6 +154,9 @@ final class PoolThreadCache {
     }
 
 
+    // 参数1：smallCacheSize 256
+    // 参数2：numTinySubpagePools 4
+    // 参数3：SizeClass.Small
     private static <T> MemoryRegionCache<T>[] createSubPageCaches(
             int cacheSize, int numCaches, SizeClass sizeClass) {
         if (cacheSize > 0 && numCaches > 0) {

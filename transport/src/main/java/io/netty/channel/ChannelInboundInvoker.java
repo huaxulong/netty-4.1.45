@@ -41,6 +41,7 @@ public interface ChannelInboundInvoker {
      * This will result in having the  {@link ChannelInboundHandler#channelActive(ChannelHandlerContext)} method
      * called of the next  {@link ChannelInboundHandler} contained in the  {@link ChannelPipeline} of the
      * {@link Channel}.
+     * 当channel激活了以后，咱们会向pipeline中发起激活事件
      */
     ChannelInboundInvoker fireChannelActive();
 
@@ -77,6 +78,7 @@ public interface ChannelInboundInvoker {
      * This will result in having the {@link ChannelInboundHandler#channelRead(ChannelHandlerContext, Object)}
      * method  called of the next {@link ChannelInboundHandler} contained in the  {@link ChannelPipeline} of the
      * {@link Channel}.
+     * 当channel 上有数据之后，交给用户去处理，走的就是fireChannelRead 方法，也就是最外层 实现了 InBoundHandler接口的实现类的方法中，
      */
     ChannelInboundInvoker fireChannelRead(Object msg);
 

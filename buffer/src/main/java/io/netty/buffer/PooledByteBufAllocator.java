@@ -103,7 +103,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
          */
         // 计算出 默认最少arena个数：cpu * 2
         final int defaultMinNumArena = NettyRuntime.availableProcessors() * 2;
-        // 8k << 11 => 16777216  =>  16mb ，默认情况下 一个 Chunk管理 16mb 的真实内存。
+        // 8k << 11 => 16777216 / (1024*1024) =>  16mb ，默认情况下 一个 Chunk管理 16mb 的真实内存。
         final int defaultChunkSize = DEFAULT_PAGE_SIZE << DEFAULT_MAX_ORDER;
 
         // cpu * 2
@@ -209,7 +209,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     }
 
     @SuppressWarnings("deprecation")
-    // 分析构造方法入口： preferDirect 一般是true
+    // 分析构造方法入口： preferDirect 一般是true,偏向堆外内存
     public PooledByteBufAllocator(boolean preferDirect) {
         // 参数1：preferDirect 一般是true， 表示偏向使用堆外内存。
         // 参数2：DEFAULT_NUM_HEAP_ARENA  堆arena个数 cpu*2
@@ -369,7 +369,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
             for (int i = 0; i < directArenas.length; i ++) {
                 // 参数1：allocator 对象
                 // 参数2：pageSize,8k
-                // 参数3：maxOrder，11
+                // 参数3：maxOrder，11 满二叉树的深度
                 // 参数4：pageShifts,13 ，1 << 13 => pageSize
                 // 参数5：chunkSize,16mb
                 // 参数6：directMemoryCacheAlignment 0
@@ -576,6 +576,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         @Override
         protected synchronized PoolThreadCache initialValue() {
 
+            // 返回一个 arenas 数组内，线程共享数最低的 arena 对象。
             final PoolArena<byte[]> heapArena = leastUsedArena(heapArenas);
             final PoolArena<ByteBuffer> directArena = leastUsedArena(directArenas);
 
@@ -585,7 +586,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
             // FastThreadLocalThread 类型。
             if (useCacheForAllThreads || current instanceof FastThreadLocalThread) {
 
-                // 创建归属当前线程的 cache 对象。
+                // 创建归属当前线程的 PoolThreadCache cache 对象。
                 // 参数1：heapArena
                 // 参数2：directArena
                 // 参数3：tinyCacheSize {512}

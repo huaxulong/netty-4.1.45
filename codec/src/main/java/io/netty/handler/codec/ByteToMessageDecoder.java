@@ -147,13 +147,20 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         }
     };
 
+    // 初始状态
     private static final byte STATE_INIT = 0;
+    // 调用子类实现的decode 方法时期状态
     private static final byte STATE_CALLING_CHILD_DECODE = 1;
+    // 当decoder 从PIPEline 移除出去之后， 状态会修改为 REMOVED_PENDING 状态
     private static final byte STATE_HANDLER_REMOVED_PENDING = 2;
 
+    // 堆积区ByteBuf
     ByteBuf cumulation;
+    // 数据来了之后， cumulator负责将其合并到 cumulation 内
     private Cumulator cumulator = MERGE_CUMULATOR;
+    // 默认是false， 如果是true， 每次ChannelRead 只解码一个 frame
     private boolean singleDecode;
+    // false 代表 cumulator 的值 是null
     private boolean first;
 
     /**
@@ -265,12 +272,14 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void handlerRemoved0(ChannelHandlerContext ctx) throws Exception { }
 
+    // 编码器
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof ByteBuf) {
             CodecOutputList out = CodecOutputList.newInstance();
             try {
                 first = cumulation == null;
+                // 将所有的 ctx.alloc() 内存 合并到 cumulation 里面。
                 cumulation = cumulator.cumulate(ctx.alloc(),
                         first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
                 callDecode(ctx, cumulation, out);

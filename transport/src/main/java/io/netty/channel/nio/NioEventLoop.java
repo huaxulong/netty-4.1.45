@@ -707,7 +707,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      */
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
         // 1. NioServerSocketChannel -> NioMessageUnsafe
-        // 2. NioSocketChannel -> NioByteUnsafe
+        // 2. NioSocketChannel -> NioByteUnsafe  NioSocketChannelUnsafe
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
         if (!k.isValid()) {
             final EventLoop eventLoop;
